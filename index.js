@@ -26,28 +26,35 @@ async function run() {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
 
-    const serviceCollection = client.db("car-doctor").collection('services');
-    const bookingCollection = client.db("car-doctor").collection('bookings');
+    const serviceCollection = client.db("car-doctor").collection("services");
+    const bookingCollection = client.db("car-doctor").collection("bookings");
 
     app.get("/services", async (req, res) => {
       const result = await serviceCollection.find().toArray();
       res.send(result);
     });
     app.get("/services/:id", async (req, res) => {
-      const id= req.params.id;
-      const filter = {_id: new ObjectId(id)};
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
 
       const options = {
-        projection:{title: 1, price: 1, service_id: 1, img:1}
-      }
+        projection: { title: 1, price: 1, service_id: 1, img: 1 },
+      };
       const result = await serviceCollection.findOne(filter, options);
       res.send(result);
     });
-    app.post('/bookings', async(req, res) => {
+    app.post("/bookings", async (req, res) => {
       const booking = req.body;
       const result = await bookingCollection.insertOne(booking);
       res.send(result);
-    })
+    });
+    app.get("/bookings", async (req, res) => {
+      console.log(req.query.email);
+      let query = {};
+      if (req.query?.email) query = { email: req.query.email };
+      const result = await bookingCollection.find(query).toArray();
+      res.send(result);
+    });
 
 
 
