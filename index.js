@@ -32,20 +32,17 @@ const client = new MongoClient(uri, {
 async function run() {
   // middleware
   const logger = (req, res, next) => {
-    console.log("Middleware: ", req.hostname, req.originalUrl);
+    console.log("logger: ", req.url);
     next();
   };
 
   const verifyToken = (req, res, next) => {
-    const token = req.cookies?.token;
+    const token = req?.cookies?.token;
     if (!token) return res.status(401).send({ message: "Unauthorized" });
 
     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
       if (err) return res.status(401).send({ message: "Unauthorized" });
-
-      console.log("Decoded: ", decoded);
       req.user = decoded;
-
       next();
     });
   };
@@ -57,22 +54,38 @@ async function run() {
     const serviceCollection = client.db("car-doctor").collection("services");
     const bookingCollection = client.db("car-doctor").collection("bookings");
 
-    app.post("/jwt", logger, async (req, res) => {
-      const user = req.body;
+    // Issue a token and send to cookie
+    app.post("/jwt", async (req, res) => {
+      try {
+        const loggedUser = req.body;
+        const token = jwt.sign(loggedUser, process.env.ACCESS_TOKEN_SECRET, {
+          expiresIn: "1h",
+        });
 
-      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
-        expiresIn: "1h",
-      });
-      res
-        .cookie("token", token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-        })
-        .send({ success: true });
+        res
+          .cookie("token", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+          })
+          .send({ success: true });
+      } catch (error) {
+        console.log(error);
+      }
     });
 
-    app.get("/services", logger, async (req, res) => {
+    // Clear token from cookie when logout
+    app.post("/logout", async (req, res) => {
+      try {
+        const user = req.body;
+
+        res.clearCookie("token", { maxAge: 0 }).send({ success: true });
+      } catch (error) {
+        console.log(error);
+      }
+    });
+
+    app.get("/services", async (req, res) => {
       const result = await serviceCollection.find().toArray();
       res.send(result);
     });
@@ -91,19 +104,17 @@ async function run() {
       const result = await bookingCollection.insertOne(booking);
       res.send(result);
     });
+
     app.get("/bookings", logger, verifyToken, async (req, res) => {
       let query = {};
-      if (req.query?.email) query = { email: req.query.email };
-
-      if (req.query.email !== req.user.email)
+      if (req.query?.email !== req.user?.email)
         return res.status(403).send({ message: "Forbidden" });
 
       const result = await bookingCollection.find(query).toArray();
 
-      console.log("Token User: ", req.user);
-      console.log("token: ", req.cookies.token);
       res.send(result);
     });
+
     app.patch("/bookings/:id", async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
